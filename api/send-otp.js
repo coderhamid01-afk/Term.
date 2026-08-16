@@ -24,23 +24,33 @@ function generateOTP() {
 }
 
 async function getNextOtpCounter() {
-  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
-  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  try {
+    const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-  if (!redisUrl || !redisToken) return null;
+    if (!redisUrl || !redisToken) return null;
 
-  const url = `${redisUrl.replace(/\/+$/, "")}/incr/plenxo_total_emails`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${redisToken}`,
-      "Content-Type": "application/json"
-    }
-  });
+    const url = `${redisUrl.replace(/\/+$/, "")}/incr/plenxo_total_emails`;
+    
+    // Using globalThis.fetch to avoid Node runtime mismatch
+    const fetchFn = typeof fetch !== "undefined" ? fetch : globalThis.fetch;
+    if (!fetchFn) return null;
 
-  if (!response.ok) throw new Error(`Redis counter failed with HTTP ${response.status}`);
-  const data = await response.json();
-  return Number(data.result);
+    const response = await fetchFn(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${redisToken}`,
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (!response.ok) return null;
+    const data = await response.json();
+    return Number(data.result) || null;
+  } catch (err) {
+    console.log("Redis bypassed:", err.message);
+    return null;
+  }
 }
 
 function buildEmailHtml(title, otpCode, themeColor) {
@@ -92,7 +102,12 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const body = req.body || {};
+    let body = req.body;
+    if (typeof body === "string") {
+      try { body = JSON.parse(body); } catch(e) {}
+    }
+    body = body || {};
+
     const email = typeof body.email === "string" ? body.email.trim() : "";
     const purpose = typeof body.purpose === "string" ? body.purpose.trim().toLowerCase() : "signup";
     const clientOtp = body.otp ?? body.otp_code ?? null;
@@ -107,12 +122,7 @@ module.exports = async function handler(req, res) {
 
     let finalOtp = (clientOtp && /^\d{6}$/.test(String(clientOtp).trim())) ? String(clientOtp).trim() : generateOTP();
 
-    let totalEmailsSent = null;
-    try {
-      totalEmailsSent = await getNextOtpCounter();
-    } catch (error) {
-      console.warn("[WARN] Redis counter unavailable:", error.message);
-    }
+    let totalEmailsSent = await getNextOtpCounter();
 
     const rotationNumber = Number.isFinite(totalEmailsSent) && totalEmailsSent > 0 ? totalEmailsSent : Date.now();
     const accountIndex = Math.floor((rotationNumber - 1) / 499) % EMAIL_ACCOUNTS.length;
