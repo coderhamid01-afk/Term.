@@ -3,7 +3,7 @@
 
 [functions]
   node_bundler = "esbuild"
-  external_node_modules = ["nodemailer"]
+  included_files = ["node_modules/nodemailer/**"]
 
 [[redirects]]
   from = "/api/*"
