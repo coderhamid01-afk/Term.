@@ -1,6 +1,8 @@
 {
   "name": "plenxo-backend",
   "version": "1.0.0",
+  "description": "Plenxo OTP Backend Service",
+  "main": "api/send-otp.js",
   "dependencies": {
     "nodemailer": "^6.9.1"
   }
