@@ -1,7 +1,5 @@
 {
-  "name": "netlify-functions",
+  "name": "plenxo-backend",
   "version": "1.0.0",
-  "dependencies": {
-    "nodemailer": "^6.9.1"
-  }
+  "description": "Plenxo OTP Backend Serverless API"
 }
