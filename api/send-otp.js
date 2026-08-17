@@ -1,3 +1,5 @@
+const nodemailer = require("nodemailer");
+
 // Upstash Redis Credentials
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "https://amused-escargot-112889.upstash.io";
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "gQAAAAAAAbj5AAIgcDE1ZGJlZmEyNjJiYzA0M2RiOTJjZGU5NzY4ZjI4YzZhMQ";
@@ -11,7 +13,7 @@ const EMAIL_ACCOUNTS = [
   { user: 'omeedtv8@gmail.com', pass: 'aymudghezvqppdby' }
 ];
 
-// Upstash Counter Incrementor (Safe Native Fetch)
+// Upstash Counter Incrementor
 async function getNextCounter() {
   try {
     const cleanUrl = UPSTASH_URL.replace(/\/+$/, "");
@@ -24,12 +26,11 @@ async function getNextCounter() {
     const data = await res.json();
     return Number(data.result) || Date.now();
   } catch (err) {
-    return Date.now(); // Fallback if network drops
+    return Date.now();
   }
 }
 
 module.exports = async function handler(req, res) {
-  // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -52,16 +53,14 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ status: "error", message: "Email required hai boss!" });
     }
 
-    // 1. Increment and Get Upstash Counter
+    // 1. Upstash Counter Increment
     const count = await getNextCounter();
 
-    // 2. Account Rotation Index Formula (Har 499 mails ke baad account switch)
+    // 2. Account Rotation Index Formula
     const accountIndex = Math.floor((count - 1) / 499) % EMAIL_ACCOUNTS.length;
     const selectedAccount = EMAIL_ACCOUNTS[accountIndex];
 
-    // 3. Dynamic Import Nodemailer (Prevents Vercel Init Crash)
-    const nodemailer = require("nodemailer");
-
+    // 3. Nodemailer SMTP Mail Sender
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
@@ -96,10 +95,9 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (error) {
-    // Graceful error handler (Never lets Vercel crash to 500)
     return res.status(200).json({
       status: "error",
-      message: "Processing Failed",
+      message: "Delivery Failed",
       reason: error.message || String(error)
     });
   }
