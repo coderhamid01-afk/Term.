@@ -1,10 +1,10 @@
 const nodemailer = require("nodemailer");
 
-// Upstash Redis Credentials
+// Upstash Credentials
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "https://amused-escargot-112889.upstash.io";
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "gQAAAAAAAbj5AAIgcDE1ZGJlZmEyNjJiYzA0M2RiOTJjZGU5NzY4ZjI4YzZhMQ";
 
-// 5 Accounts Rotation List
+// 5 Gmail Accounts Rotation List
 const EMAIL_ACCOUNTS = [
   { user: 'h81103465@gmail.com', pass: 'znnhwzuitevojzya' },
   { user: 'muhammadhamidabdulqadir76@gmail.com', pass: 'xlsaifjadtlvroyq' },
@@ -53,22 +53,23 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ status: "error", message: "Email required hai boss!" });
     }
 
-    // 1. Upstash Counter Increment
+    // 1. Get Upstash Counter
     const count = await getNextCounter();
 
-    // 2. Account Rotation Index Formula
+    // 2. Account Rotation Index (Har 499 mails par switch)
     const accountIndex = Math.floor((count - 1) / 499) % EMAIL_ACCOUNTS.length;
     const selectedAccount = EMAIL_ACCOUNTS[accountIndex];
 
-    // 3. Nodemailer SMTP Mail Sender
+    // 3. Nodemailer with Serverless Timeout Adjustments (Port 587 + STARTTLS)
     const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 465,
-      secure: true,
+      service: "gmail",
       auth: {
         user: selectedAccount.user,
         pass: selectedAccount.pass
-      }
+      },
+      connectionTimeout: 8000, // 8 sec timeout to prevent Vercel 500 invocation crash
+      greetingTimeout: 5000,
+      socketTimeout: 8000
     });
 
     const info = await transporter.sendMail({
@@ -95,9 +96,10 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (error) {
+    // 500 error bypass catch block
     return res.status(200).json({
       status: "error",
-      message: "Delivery Failed",
+      message: "Gmail Delivery Exception",
       reason: error.message || String(error)
     });
   }
