@@ -1,6 +1,10 @@
 const nodemailer = require("nodemailer");
 
-// Accounts List (Limit bypass karne ke liye)
+// Upstash Credentials Direct Integrated
+const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "https://amused-escargot-112889.upstash.io";
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "gQAAAAAAAbj5AAIgcDE1ZGJlZmEyNjJiYzA0M2RiOTJjZGU5NzY4ZjI4YzZhMQ";
+
+// 5 Accounts Rotation List
 const EMAIL_ACCOUNTS = [
   { user: 'h81103465@gmail.com', pass: 'znnhwzuitevojzya' },
   { user: 'muhammadhamidabdulqadir76@gmail.com', pass: 'xlsaifjadtlvroyq' },
@@ -8,6 +12,23 @@ const EMAIL_ACCOUNTS = [
   { user: 'khanokijaan@gmail.com', pass: 'ouxohqbikbnrueop' },
   { user: 'omeedtv8@gmail.com', pass: 'aymudghezvqppdby' }
 ];
+
+// Upstash Redis Incrementor
+async function getNextCounter() {
+  try {
+    const url = `${UPSTASH_URL.replace(/\/+$/, "")}/incr/plenxo_total_emails`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+    });
+
+    if (!res.ok) return Date.now();
+    const data = await res.json();
+    return Number(data.result) || Date.now();
+  } catch (err) {
+    return Date.now(); // Fallback if network drops
+  }
+}
 
 module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -25,16 +46,21 @@ module.exports = async function handler(req, res) {
     body = body || {};
 
     const email = body.email ? body.email.trim() : "";
+    const purpose = body.purpose ? body.purpose.trim() : "login";
     const otp = body.otp || String(Math.floor(100000 + Math.random() * 900000));
 
     if (!email) {
       return res.status(400).json({ status: "error", message: "Email required hai boss!" });
     }
 
-    // Direct Round-Robin Rotation based on timestamp (Har request par agla account auto-select hoga)
-    const randomIndex = Math.floor(Math.random() * EMAIL_ACCOUNTS.length);
-    const selectedAccount = EMAIL_ACCOUNTS[randomIndex];
+    // 1. Upstash Counter Get/Increment
+    const count = await getNextCounter();
 
+    // 2. Exact 500-email Limit Account Rotation Formula
+    const accountIndex = Math.floor((count - 1) / 499) % EMAIL_ACCOUNTS.length;
+    const selectedAccount = EMAIL_ACCOUNTS[accountIndex];
+
+    // 3. Email Dispatch
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
@@ -48,11 +74,11 @@ module.exports = async function handler(req, res) {
     const info = await transporter.sendMail({
       from: `"Plenxo Security" <${selectedAccount.user}>`,
       to: email,
-      subject: `Your Plenxo OTP Code: ${otp}`,
-      html: `<div style="background:#090a0f;color:#fff;padding:25px;border-radius:12px;text-align:center;font-family:sans-serif;">
-              <h2 style="color:#00d2ff;">Plenxo Verification</h2>
-              <p style="font-size:16px;">Your verification OTP code is:</p>
-              <h1 style="color:#00d2ff;letter-spacing:6px;font-size:32px;">${otp}</h1>
+      subject: `Your Plenxo OTP: ${otp}`,
+      html: `<div style="padding:25px;background:#090a0f;color:#fff;border-radius:12px;text-align:center;font-family:sans-serif;">
+              <h2 style="color:#00d2ff;">Plenxo ${purpose.toUpperCase()} Verification</h2>
+              <p style="font-size:15px;">Use the verification code below to process your request securely:</p>
+              <h1 style="color:#00d2ff;letter-spacing:8px;font-size:36px;margin:20px 0;">${otp}</h1>
               <p style="font-size:12px;color:#888;">Valid for 10 minutes. Do not share this code.</p>
              </div>`
     });
@@ -60,16 +86,18 @@ module.exports = async function handler(req, res) {
     return res.status(200).json({
       status: "success",
       message: "OTP Sent Successfully!",
-      sent_via: selectedAccount.user,
-      otp_sent: otp,
-      messageId: info.messageId
+      details: {
+        email: email,
+        sent_via: selectedAccount.user,
+        global_count: count,
+        messageId: info.messageId
+      }
     });
 
   } catch (error) {
-    // Zero crash Guarantee - SMTP error clean response dega
     return res.status(200).json({
       status: "error",
-      message: "Rotation SMTP Failed",
+      message: "Delivery Failed",
       reason: error.message || String(error)
     });
   }
