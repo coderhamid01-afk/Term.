@@ -1,6 +1,4 @@
-const nodemailer = require("nodemailer");
-
-// Upstash Credentials Direct Integrated
+// Upstash Redis Credentials
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL || "https://amused-escargot-112889.upstash.io";
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || "gQAAAAAAAbj5AAIgcDE1ZGJlZmEyNjJiYzA0M2RiOTJjZGU5NzY4ZjI4YzZhMQ";
 
@@ -13,11 +11,11 @@ const EMAIL_ACCOUNTS = [
   { user: 'omeedtv8@gmail.com', pass: 'aymudghezvqppdby' }
 ];
 
-// Upstash Redis Incrementor
+// Upstash Counter Incrementor (Safe Native Fetch)
 async function getNextCounter() {
   try {
-    const url = `${UPSTASH_URL.replace(/\/+$/, "")}/incr/plenxo_total_emails`;
-    const res = await fetch(url, {
+    const cleanUrl = UPSTASH_URL.replace(/\/+$/, "");
+    const res = await fetch(`${cleanUrl}/incr/plenxo_total_emails`, {
       method: "POST",
       headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
     });
@@ -31,6 +29,7 @@ async function getNextCounter() {
 }
 
 module.exports = async function handler(req, res) {
+  // CORS Headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
@@ -53,14 +52,16 @@ module.exports = async function handler(req, res) {
       return res.status(400).json({ status: "error", message: "Email required hai boss!" });
     }
 
-    // 1. Upstash Counter Get/Increment
+    // 1. Increment and Get Upstash Counter
     const count = await getNextCounter();
 
-    // 2. Exact 500-email Limit Account Rotation Formula
+    // 2. Account Rotation Index Formula (Har 499 mails ke baad account switch)
     const accountIndex = Math.floor((count - 1) / 499) % EMAIL_ACCOUNTS.length;
     const selectedAccount = EMAIL_ACCOUNTS[accountIndex];
 
-    // 3. Email Dispatch
+    // 3. Dynamic Import Nodemailer (Prevents Vercel Init Crash)
+    const nodemailer = require("nodemailer");
+
     const transporter = nodemailer.createTransport({
       host: "smtp.gmail.com",
       port: 465,
@@ -77,7 +78,7 @@ module.exports = async function handler(req, res) {
       subject: `Your Plenxo OTP: ${otp}`,
       html: `<div style="padding:25px;background:#090a0f;color:#fff;border-radius:12px;text-align:center;font-family:sans-serif;">
               <h2 style="color:#00d2ff;">Plenxo ${purpose.toUpperCase()} Verification</h2>
-              <p style="font-size:15px;">Use the verification code below to process your request securely:</p>
+              <p style="font-size:15px;">Your verification OTP code is:</p>
               <h1 style="color:#00d2ff;letter-spacing:8px;font-size:36px;margin:20px 0;">${otp}</h1>
               <p style="font-size:12px;color:#888;">Valid for 10 minutes. Do not share this code.</p>
              </div>`
@@ -95,9 +96,10 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (error) {
+    // Graceful error handler (Never lets Vercel crash to 500)
     return res.status(200).json({
       status: "error",
-      message: "Delivery Failed",
+      message: "Processing Failed",
       reason: error.message || String(error)
     });
   }
