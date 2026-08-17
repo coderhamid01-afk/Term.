@@ -1,8 +1,12 @@
 {
   "name": "plenxo-backend",
   "version": "1.0.0",
+  "description": "Plenxo OTP Backend",
+  "main": "functions/send-otp.js",
+  "scripts": {
+    "build": "npm install"
+  },
   "dependencies": {
-    "@netlify/functions": "^2.6.0",
     "nodemailer": "^6.9.1"
   }
 }
